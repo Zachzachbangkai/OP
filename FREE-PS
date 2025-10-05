@@ -1,28 +1,17 @@
---[[
-    Roblox Private Server Join Script
-    Author: (Your Name)
-    Description:
-        Teleports any player who runs this script
-        from a public server directly into your private server.
-
-        Private Server Link:
-        https://www.roblox.com/share?code=7623dddb65134247a02c116c124b9c5c&type=Server
-
-        ✅ Safe and uses Roblox's official TeleportService
-        📍 Place this in StarterGui as a LocalScript
-]]
-
--- // Services
 local TeleportService = game:GetService("TeleportService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
 
--- // Configuration
-local PLACE_ID = game.PlaceId -- or replace with your specific game PlaceId
-local PRIVATE_SERVER_CODE = "7623dddb65134247a02c116c124b9c5c" -- from your share link
+local remote = Instance.new("RemoteEvent")
+remote.Name = "ReservedServerCode"
+remote.Parent = ReplicatedStorage
 
--- // Teleport Player to Your Private Server
-local function joinPrivateServer()
-	TeleportService:TeleportToPrivateServer(PLACE_ID, PRIVATE_SERVER_CODE)
-end
-
--- // Run Automatically on Player Join
-joinPrivateServer()
+-- Player requests a reserved server (could be tied to a button)
+remote.OnServerEvent:Connect(function(player, action)
+    if action == "RequestReserved" then
+        local accessCode, serverId = TeleportService:ReserveServer(game.PlaceId)
+        print("Reserved server for", player.Name, "code:", accessCode, "serverId:", serverId)
+        -- Send the access code back to the requester
+        remote:FireClient(player, accessCode)
+    end
+end)

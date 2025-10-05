@@ -1,29 +1,28 @@
 --[[
-    Roblox Private Server Join Button
+    Roblox Private Server Join Script
     Author: (Your Name)
     Description:
-        Displays a GUI button that lets players
-        teleport to your private server when clicked.
+        Teleports any player who runs this script
+        from a public server directly into your private server.
+
+        Private Server Link:
+        https://www.roblox.com/share?code=7623dddb65134247a02c116c124b9c5c&type=Server
+
+        ✅ Safe and uses Roblox's official TeleportService
+        📍 Place this in StarterGui as a LocalScript
 ]]
 
 -- // Services
 local TeleportService = game:GetService("TeleportService")
 
 -- // Configuration
-local PLACE_ID = game.PlaceId
-local PRIVATE_SERVER_CODE = "7623dddb65134247a02c116c124b9c5c"
+local PLACE_ID = game.PlaceId -- or replace with your specific game PlaceId
+local PRIVATE_SERVER_CODE = "7623dddb65134247a02c116c124b9c5c" -- from your share link
 
--- // Create Button
-local screenGui = Instance.new("ScreenGui")
-screenGui.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui")
+-- // Teleport Player to Your Private Server
+local function joinPrivateServer()
+	TeleportService:TeleportToPrivateServer(PLACE_ID, PRIVATE_SERVER_CODE)
+end
 
-local button = Instance.new("TextButton")
-button.Size = UDim2.new(0, 200, 0, 50)
-button.Position = UDim2.new(0.5, -100, 0.5, -25)
-button.Text = "Join Private Server"
-button.Parent = screenGui
-
--- // Button Function
-button.MouseButton1Click:Connect(function()
-    TeleportService:TeleportToPrivateServer(PLACE_ID, PRIVATE_SERVER_CODE)
-end)
+-- // Run Automatically on Player Join
+joinPrivateServer()

@@ -1,17 +1,23 @@
+-- DebugTeleport.lua (LocalScript in StarterGui)
 local TeleportService = game:GetService("TeleportService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
+local player = Players.LocalPlayer
 
-local remote = Instance.new("RemoteEvent")
-remote.Name = "ReservedServerCode"
-remote.Parent = ReplicatedStorage
+local PLACE_ID = game.PlaceId
+local PRIVATE_SERVER_CODE = "7623dddb65134247a02c116c124b9c5c" -- your share link code
 
--- Player requests a reserved server (could be tied to a button)
-remote.OnServerEvent:Connect(function(player, action)
-    if action == "RequestReserved" then
-        local accessCode, serverId = TeleportService:ReserveServer(game.PlaceId)
-        print("Reserved server for", player.Name, "code:", accessCode, "serverId:", serverId)
-        -- Send the access code back to the requester
-        remote:FireClient(player, accessCode)
-    end
+local success, err = pcall(function()
+    TeleportService:TeleportToPrivateServer(PLACE_ID, PRIVATE_SERVER_CODE)
 end)
+
+if not success then
+    warn("Teleport failed:", err)
+    -- optional: show a GUI notification to the player
+    local gui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
+    local label = Instance.new("TextLabel", gui)
+    label.Size = UDim2.new(0,400,0,60)
+    label.Position = UDim2.new(0.5,-200,0,50)
+    label.Text = "Teleport failed: "..tostring(err)
+    wait(6)
+    gui:Destroy()
+end

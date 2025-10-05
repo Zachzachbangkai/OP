@@ -1,28 +1,29 @@
--- In a LocalScript (client side)
+--[[
+    Roblox Private Server Join Button
+    Author: (Your Name)
+    Description:
+        Displays a GUI button that lets players
+        teleport to your private server when clicked.
+]]
+
+-- // Services
 local TeleportService = game:GetService("TeleportService")
 
--- Suppose you have the share link:
-local shareLink = "https://www.roblox.com/share?code=7623dddb65134247a02c116c124b9c5c&type=Server"
+-- // Configuration
+local PLACE_ID = game.PlaceId
+local PRIVATE_SERVER_CODE = "7623dddb65134247a02c116c124b9c5c"
 
--- Function to extract the code from URL
-local function extractCodeFromUrl(url)
-    -- this is simplistic; real parsing is more robust
-    for code in url:gmatch("code=([A-Za-z0-9]+)") do
-        return code
-    end
-    return nil
-end
+-- // Create Button
+local screenGui = Instance.new("ScreenGui")
+screenGui.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui")
 
-local serverCode = extractCodeFromUrl(shareLink)
-if serverCode then
-    -- Now attempt to teleport the player using that server code
-    -- You need the placeId of the game you want to teleport into.
-    local placeId = game.PlaceId  -- or whichever place
-    local teleportData = {
-        serverId = serverCode
-    }
-    -- This will try to teleport to that specific server
-    TeleportService:TeleportToPrivateServer(placeId, serverCode, {game.Players.LocalPlayer}, teleportData)
-else
-    warn("Could not find server code in link")
-end
+local button = Instance.new("TextButton")
+button.Size = UDim2.new(0, 200, 0, 50)
+button.Position = UDim2.new(0.5, -100, 0.5, -25)
+button.Text = "Join Private Server"
+button.Parent = screenGui
+
+-- // Button Function
+button.MouseButton1Click:Connect(function()
+    TeleportService:TeleportToPrivateServer(PLACE_ID, PRIVATE_SERVER_CODE)
+end)

